@@ -8,10 +8,11 @@ Universal and flexible RSS feed client for Rocket.Chat, built on the official Ap
 - RSS 2.0 and Atom feed parsing
 - persistent feed subscriptions stored in app persistence
 - per-subscription target room and polling interval
+- global, per-channel, and per-subscription delivery identity overrides
 - deduplication of previously seen entries
 - safe bootstrap behavior that stores current items without flooding rooms on subscribe
 - optional dry-run mode for validation before enabling delivery
-- slash-command driven operations for subscribe, list, pause, resume, test, run, and remove
+- slash-command driven operations for subscribe, config, list, pause, resume, test, run, and remove
 
 ## Stack
 
@@ -64,6 +65,9 @@ Universal and flexible RSS feed client for Rocket.Chat, built on the official Ap
 
 - `/rss help`
 - `/rss subscribe <feed-url> [#channel] [interval-minutes]`
+- `/rss config global [show|set|clear] [logo|display-name|username] [value]`
+- `/rss config <#channel> [show|set|clear] [logo|display-name|username] [value]`
+- `/rss config <subscription-id|feed-url> [show|set|clear] [logo|display-name|username] [value]`
 - `/rss list`
 - `/rss remove <subscription-id|feed-url>`
 - `/rss pause <subscription-id|feed-url>`
@@ -80,3 +84,19 @@ Universal and flexible RSS feed client for Rocket.Chat, built on the official Ap
 - `Dry run mode`
 
 `Dry run mode` is enabled by default. While it is enabled, feeds are fetched, parsed, deduplicated, and tracked, but scheduled or manual runs will not post messages into channels.
+
+## Branding and Sender Overrides
+
+- `logo` expects a publicly reachable `https://` image URL. The app uses it as the per-message avatar override.
+- `display-name` sets the visible alias shown for messages sent by the app user.
+- `username` accepts `app` or an existing Rocket.Chat username such as `@newsbot`. When you point to an existing user or bot, the app sends as that account instead of the built-in app user.
+
+Examples:
+
+```text
+/rss config global set logo https://example.com/rocketchat-rss-logo.png
+/rss config global set display-name RocketChat RSS
+/rss config global set username @newsbot
+/rss config #security set display-name Security Feeds
+/rss config rss-abc123 set username app
+```

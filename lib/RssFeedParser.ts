@@ -181,13 +181,23 @@ function sanitizeUrl(value: string | undefined): string | undefined {
 
 function decodeEntities(input: string): string {
     const named = input
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&apos;/g, '\'')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&amp;/g, '&')
         .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'");
+        .replace(/&#39;/g, '\'')
+        .replace(/&lsquo;/g, '\'')
+        .replace(/&rsquo;/g, '\'')
+        .replace(/&ldquo;/g, '"')
+        .replace(/&rdquo;/g, '"')
+        .replace(/&ndash;/g, '-')
+        .replace(/&mdash;/g, '-')
+        .replace(/&hellip;/g, '...');
 
     return named
+        .replace(/&#160;/g, ' ')
         .replace(/&#(\d+);/g, (_, value) => String.fromCharCode(Number(value)))
         .replace(/&#x([0-9a-f]+);/gi, (_, value) => String.fromCharCode(parseInt(value, 16)));
 }

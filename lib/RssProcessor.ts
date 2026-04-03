@@ -10,12 +10,18 @@ import {
     IRecurringStartup,
     StartupType,
 } from '@rocket.chat/apps-engine/definition/scheduler';
+import {
+    IUser,
+} from '@rocket.chat/apps-engine/definition/users';
 
 import {
     DEFAULT_SCHEDULER_INTERVAL,
     MAX_RECENT_ITEM_KEYS,
     RSS_POLL_PROCESSOR_ID,
 } from './constants';
+import {
+    RssConfigStore,
+} from './RssConfigStore';
 import {
     RssFeedReader,
 } from './RssFeedReader';
@@ -24,6 +30,7 @@ import {
 } from './RssSubscriptionStore';
 import {
     ProcessSubscriptionResult,
+    RssDeliveryIdentityConfig,
     RssFeedItem,
     RssSubscription,
 } from './types';
@@ -117,7 +124,7 @@ export class RssProcessor implements IProcessor {
             const dryRun = Boolean(await read.getEnvironmentReader().getSettings().getValueById(RssSetting.DryRunMode));
             const deliveredCount = isBootstrap
                 ? 0
-                : await this.deliverItems(subscription, feed.title, newItems, read, modify, dryRun);
+                : await this.deliverItems(subscription, feed.title, newItems, read, modify, persistence, dryRun);
 
             const updatedSubscription: RssSubscription = {
                 ...subscription,
@@ -153,7 +160,7 @@ export class RssProcessor implements IProcessor {
                 updatedAt: now.toISOString(),
             };
 
-            await this.saveSubscription(store, updatedSubscription, `Unable to persist RSS failure state for ${subscription.feedUrl}`);
+            await this.saveSubscription(store, updatedSubscription, `Unable to persist failed RSS subscription ${subscription.id}`);
             this.logUnexpectedError(`RSS poll failed for ${subscription.feedUrl}: ${message}`, error);
 
             return {
@@ -199,6 +206,7 @@ export class RssProcessor implements IProcessor {
         items: Array<RssFeedItem>,
         read: IRead,
         modify: IModify | undefined,
+        persistence: IPersistence | undefined,
         dryRun: boolean,
     ): Promise<number> {
         if (!items.length || dryRun) {
@@ -210,27 +218,37 @@ export class RssProcessor implements IProcessor {
         }
 
         const room = await read.getRoomReader().getById(subscription.roomId);
-        const appUser = await read.getUserReader().getAppUser();
-        if (!room || !appUser) {
-            throw new Error('Target room or app user is unavailable.');
+        const identityConfig = await this.resolveIdentityConfig(subscription, read, persistence);
+        const sender = await this.resolveSender(identityConfig, read);
+        if (!room || !sender) {
+            throw new Error('Target room or sender user is unavailable.');
         }
 
         for (const item of items) {
+            const hasAttachment = Boolean(item.summary || item.author || item.publishedAt);
             const builder = modify.getCreator().startMessage();
             builder
                 .setRoom(room)
-                .setSender(appUser)
+                .setSender(sender)
                 .setGroupable(false)
-                .setText(this.buildMessageText(feedTitle, item));
+                .setText(this.buildMessageText(feedTitle, item, hasAttachment));
 
-            if (item.summary || item.author || item.publishedAt) {
+            if (identityConfig.displayName) {
+                builder.setUsernameAlias(identityConfig.displayName);
+            }
+
+            if (identityConfig.avatarUrl) {
+                builder.setAvatarUrl(identityConfig.avatarUrl);
+            }
+
+            if (hasAttachment) {
                 builder.addAttachment({
                     color: '#1d74f5',
                     title: {
                         value: item.title,
                         link: item.url,
                     },
-                    text: item.summary,
+                    text: item.summary ? truncate(item.summary, 350) : undefined,
                     author: item.author ? { name: item.author } : undefined,
                     timestamp: item.publishedAt ? new Date(item.publishedAt) : undefined,
                 });
@@ -242,7 +260,11 @@ export class RssProcessor implements IProcessor {
         return items.length;
     }
 
-    private buildMessageText(feedTitle: string, item: RssFeedItem): string {
+    private buildMessageText(feedTitle: string, item: RssFeedItem, hasAttachment: boolean): string {
+        if (hasAttachment) {
+            return `**${feedTitle}**`;
+        }
+
         const lines = [
             `**${feedTitle}**`,
             item.url ? `<${item.url}|${item.title}>` : item.title,
@@ -253,6 +275,40 @@ export class RssProcessor implements IProcessor {
         }
 
         return lines.join('\n');
+    }
+
+    private async resolveIdentityConfig(
+        subscription: RssSubscription,
+        read: IRead,
+        persistence: IPersistence | undefined,
+    ): Promise<RssDeliveryIdentityConfig> {
+        const configStore = new RssConfigStore(read, persistence);
+        const [globalConfig, channelConfig] = await Promise.all([
+            configStore.getGlobal(),
+            configStore.getChannel(subscription.roomId),
+        ]);
+
+        return {
+            avatarUrl: subscription.identityConfig?.avatarUrl ?? channelConfig?.identityConfig?.avatarUrl ?? globalConfig.avatarUrl,
+            displayName: subscription.identityConfig?.displayName ?? channelConfig?.identityConfig?.displayName ?? globalConfig.displayName,
+            senderUsername: normalizeSenderUsername(
+                subscription.identityConfig?.senderUsername,
+                channelConfig?.identityConfig?.senderUsername,
+                globalConfig.senderUsername,
+            ),
+        };
+    }
+
+    private async resolveSender(identityConfig: RssDeliveryIdentityConfig, read: IRead): Promise<IUser | undefined> {
+        if (identityConfig.senderUsername) {
+            try {
+                return await read.getUserReader().getByUsername(identityConfig.senderUsername);
+            } catch (error) {
+                this.logUnexpectedError(`Unable to load configured sender @${identityConfig.senderUsername}`, error);
+            }
+        }
+
+        return read.getUserReader().getAppUser();
     }
 
     private async saveSubscription(
@@ -348,4 +404,17 @@ function hasPersistenceAccessor(value: unknown): value is IPersistence {
     return Boolean(value)
         && typeof (value as IPersistence).updateByAssociations === 'function'
         && typeof (value as IPersistence).create === 'function';
+}
+
+function normalizeSenderUsername(...values: Array<string | undefined>): string | undefined {
+    for (const value of values) {
+        const trimmed = value?.trim();
+        if (!trimmed || trimmed === 'app') {
+            continue;
+        }
+
+        return trimmed.replace(/^@/, '');
+    }
+
+    return undefined;
 }

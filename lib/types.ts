@@ -14,6 +14,12 @@ export interface ParsedRssFeed {
     items: Array<RssFeedItem>;
 }
 
+export interface RssDeliveryIdentityConfig {
+    avatarUrl?: string;
+    displayName?: string;
+    senderUsername?: string;
+}
+
 export interface RssSubscription {
     id: string;
     feedUrl: string;
@@ -30,6 +36,7 @@ export interface RssSubscription {
     lastSuccessAt?: string;
     lastPostedAt?: string;
     lastError?: string;
+    identityConfig?: RssDeliveryIdentityConfig;
 }
 
 export interface ProcessSubscriptionResult {
@@ -41,4 +48,11 @@ export interface ProcessSubscriptionResult {
     dryRun: boolean;
     skipped?: string;
     error?: string;
+}
+
+export interface RssChannelConfig {
+    roomId: string;
+    roomName: string;
+    updatedAt: string;
+    identityConfig?: RssDeliveryIdentityConfig;
 }

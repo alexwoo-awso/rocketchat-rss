@@ -12,6 +12,7 @@ import {
 } from './constants';
 import {
     RssSubscription,
+    RssDeliveryIdentityConfig,
 } from './types';
 
 export class RssSubscriptionStore {
@@ -100,7 +101,24 @@ export class RssSubscriptionStore {
             lastSuccessAt: candidate.lastSuccessAt,
             lastPostedAt: candidate.lastPostedAt,
             lastError: candidate.lastError,
+            identityConfig: this.toIdentityConfig(candidate.identityConfig),
         };
+    }
+
+    private toIdentityConfig(value: Partial<RssDeliveryIdentityConfig> | undefined): RssDeliveryIdentityConfig | undefined {
+        if (!value || typeof value !== 'object') {
+            return undefined;
+        }
+
+        const identityConfig: RssDeliveryIdentityConfig = {
+            avatarUrl: sanitizeOptionalString(value.avatarUrl),
+            displayName: sanitizeOptionalString(value.displayName),
+            senderUsername: sanitizeOptionalString(value.senderUsername),
+        };
+
+        return identityConfig.avatarUrl || identityConfig.displayName || identityConfig.senderUsername
+            ? identityConfig
+            : undefined;
     }
 }
 
@@ -110,4 +128,13 @@ function normalizeFeedUrl(feedUrl: string): string {
     } catch {
         return feedUrl.trim();
     }
+}
+
+function sanitizeOptionalString(value: string | undefined): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : undefined;
 }

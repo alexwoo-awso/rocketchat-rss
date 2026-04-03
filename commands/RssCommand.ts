@@ -14,7 +14,7 @@ import { RssFeedService } from '../lib/RssFeedService';
 
 export class RssCommand implements ISlashCommand {
     public command = 'rss';
-    public i18nParamsExample = 'help | subscribe <feed-url> [#channel]';
+    public i18nParamsExample = 'help | subscribe <feed-url> [#channel] | config global set logo <https://...>';
     public i18nDescription = 'Manage RSS feed subscriptions';
     public providesPreview = false;
 
