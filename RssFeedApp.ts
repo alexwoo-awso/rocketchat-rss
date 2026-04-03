@@ -13,6 +13,7 @@ import { ISetting } from '@rocket.chat/apps-engine/definition/settings';
 
 import { RssCommand } from './commands/RssCommand';
 import { settings } from './config/Settings';
+import { RssProcessor } from './lib/RssProcessor';
 
 export class RssFeedApp extends App {
     constructor(info: IAppInfo, logger: ILogger, accessors: IAppAccessors) {
@@ -25,6 +26,7 @@ export class RssFeedApp extends App {
         );
 
         configuration.slashCommands.provideSlashCommand(new RssCommand(this));
+        await configuration.scheduler.registerProcessors([new RssProcessor(this)]);
     }
 
     public async onSettingUpdated(

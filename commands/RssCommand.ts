@@ -1,6 +1,7 @@
 import {
     IHttp,
     IModify,
+    IPersistence,
     IRead,
 } from '@rocket.chat/apps-engine/definition/accessors';
 import {
@@ -19,26 +20,16 @@ export class RssCommand implements ISlashCommand {
 
     constructor(private readonly app: RssFeedApp) {}
 
-    public async executor(context: SlashCommandContext, _read: IRead, modify: IModify, http: IHttp): Promise<void> {
-        const args = context.getArguments();
-
-        if (!args.length || args[0] === 'help') {
-            await this.sendMessage(
-                context,
-                modify,
-                [
-                    'RSS commands:',
-                    '/rss help',
-                    '/rss subscribe <feed-url> [#channel]',
-                ].join('\n'),
-            );
-            return;
-        }
-
+    public async executor(context: SlashCommandContext, read: IRead, modify: IModify, http: IHttp, persistence: IPersistence): Promise<void> {
         const service = new RssFeedService(this.app);
-        const response = await service.handleCommand(args, http);
-
-        await this.sendMessage(context, modify, response);
+        try {
+            const response = await service.handleCommand(context, read, modify, http, persistence);
+            await this.sendMessage(context, modify, response);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unexpected RSS command error.';
+            this.app.getLogger().error(`RSS command failed: ${message}`);
+            await this.sendMessage(context, modify, `RSS command failed: ${message}`);
+        }
     }
 
     private async sendMessage(context: SlashCommandContext, modify: IModify, text: string): Promise<void> {

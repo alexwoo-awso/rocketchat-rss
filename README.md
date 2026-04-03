@@ -2,13 +2,16 @@
 
 Universal and flexible RSS feed client for Rocket.Chat, built on the official Apps-Engine.
 
-## Scope
+## Features
 
-This repository starts as a Rocket.Chat app scaffold focused on:
-
-- workspace-level RSS polling configuration
-- slash-command driven feed management
-- a service layer that can evolve toward feed parsing, scheduling, persistence, and room delivery
+- recurring feed polling through the Rocket.Chat Apps scheduler
+- RSS 2.0 and Atom feed parsing
+- persistent feed subscriptions stored in app persistence
+- per-subscription target room and polling interval
+- deduplication of previously seen entries
+- safe bootstrap behavior that stores current items without flooding rooms on subscribe
+- optional dry-run mode for validation before enabling delivery
+- slash-command driven operations for subscribe, list, pause, resume, test, run, and remove
 
 ## Stack
 
@@ -57,13 +60,23 @@ This repository starts as a Rocket.Chat app scaffold focused on:
    rc-apps deploy --url <server_url> -u <user> -p <password>
    ```
 
-## Current status
+## Commands
 
-The scaffold already includes:
-
-- app manifest and TypeScript config
-- admin settings for polling defaults and delivery behavior
 - `/rss help`
-- `/rss subscribe <feed-url> [#channel]`
+- `/rss subscribe <feed-url> [#channel] [interval-minutes]`
+- `/rss list`
+- `/rss remove <subscription-id|feed-url>`
+- `/rss pause <subscription-id|feed-url>`
+- `/rss resume <subscription-id|feed-url>`
+- `/rss run [subscription-id|feed-url]`
+- `/rss test <feed-url>`
 
-The actual feed retrieval, persistence, deduplication, and scheduled posting are intentionally left as the next implementation phase.
+## Settings
+
+- `Default poll interval minutes`
+- `Default target channel`
+- `Request timeout ms`
+- `User agent`
+- `Dry run mode`
+
+`Dry run mode` is enabled by default. While it is enabled, feeds are fetched, parsed, deduplicated, and tracked, but scheduled or manual runs will not post messages into channels.
