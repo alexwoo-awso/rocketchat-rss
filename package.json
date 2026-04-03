@@ -1,6 +1,6 @@
 {
   "name": "rocketchat-rss",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "Universal and flexible RSS feed client for Rocket.Chat Apps-Engine.",
   "scripts": {
@@ -9,8 +9,8 @@
     "deploy": "XDG_CACHE_HOME=.cache rc-apps deploy"
   },
   "devDependencies": {
-    "@rocket.chat/apps-cli": "1.12.1",
-    "@rocket.chat/apps-engine": "1.55.0",
+    "@rocket.chat/apps-cli": "1.13.0",
+    "@rocket.chat/apps-engine": "1.60.0",
     "@rocket.chat/ui-kit": "~0.37.0",
     "@types/node": "16.18.126",
     "typescript": "5.4.5"
