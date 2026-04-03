@@ -45,25 +45,51 @@ export class RssProcessor implements IProcessor {
 
     constructor(private readonly app: RssFeedApp) {}
 
-    public async processor(_jobContext: IJobContext, read: IRead, modify: IModify, http: IHttp, persistence: IPersistence): Promise<void> {
-        const store = new RssSubscriptionStore(read, persistence);
-        const subscriptions = await store.getAll();
-
-        for (const subscription of subscriptions) {
-            if (!this.shouldRun(subscription)) {
-                continue;
-            }
-
-            await this.processSubscription(subscription, read, modify, http, persistence);
-        }
-    }
-
-    public async processSubscription(
-        subscription: RssSubscription,
+    public processor = async (
+        _jobContext: IJobContext,
         read: IRead,
         modify: IModify,
         http: IHttp,
         persistence: IPersistence,
+    ): Promise<void> => {
+        const accessors = resolveSchedulerAccessors(modify, http, persistence);
+        this.logSchedulerAccessorState(accessors);
+
+        try {
+            const store = new RssSubscriptionStore(read, accessors.persistence);
+            const subscriptions = await store.getAll();
+
+            for (const subscription of subscriptions) {
+                if (!this.shouldRun(subscription)) {
+                    continue;
+                }
+
+                try {
+                    await this.processSubscription(
+                        subscription,
+                        read,
+                        accessors.modify,
+                        accessors.http,
+                        accessors.persistence,
+                    );
+                } catch (error) {
+                    this.logUnexpectedError(
+                        `Unexpected scheduler failure for subscription ${subscription.id} (${subscription.feedUrl})`,
+                        error,
+                    );
+                }
+            }
+        } catch (error) {
+            this.logUnexpectedError('RSS scheduler processor failed before subscription processing started', error);
+        }
+    };
+
+    public async processSubscription(
+        subscription: RssSubscription,
+        read: IRead,
+        modify: IModify | undefined,
+        http: IHttp | undefined,
+        persistence: IPersistence | undefined,
         force = false,
     ): Promise<ProcessSubscriptionResult> {
         const store = new RssSubscriptionStore(read, persistence);
@@ -81,6 +107,10 @@ export class RssProcessor implements IProcessor {
         }
 
         try {
+            if (!http) {
+                throw new Error('HTTP accessor is unavailable in the scheduler context.');
+            }
+
             const feed = await this.reader.readFeed(subscription.feedUrl, read, http);
             const newItems = this.getNewItems(subscription, feed.items);
             const isBootstrap = !subscription.lastSuccessAt && !subscription.recentItemKeys.length;
@@ -95,13 +125,15 @@ export class RssProcessor implements IProcessor {
                 lastCheckedAt: now.toISOString(),
                 lastSuccessAt: now.toISOString(),
                 lastPostedAt: deliveredCount > 0 ? now.toISOString() : subscription.lastPostedAt,
-                lastError: undefined,
                 nextRunAt: addMinutes(now, subscription.intervalMinutes).toISOString(),
                 recentItemKeys: this.mergeRecentKeys(subscription.recentItemKeys, feed.items),
                 updatedAt: now.toISOString(),
             };
 
-            await store.save(updatedSubscription);
+            await this.saveSubscription(store, {
+                ...updatedSubscription,
+                lastError: undefined,
+            });
 
             return {
                 subscription: updatedSubscription,
@@ -121,8 +153,8 @@ export class RssProcessor implements IProcessor {
                 updatedAt: now.toISOString(),
             };
 
-            await store.save(updatedSubscription);
-            this.app.getLogger().error(`RSS poll failed for ${subscription.feedUrl}: ${message}`);
+            await this.saveSubscription(store, updatedSubscription, `Unable to persist RSS failure state for ${subscription.feedUrl}`);
+            this.logUnexpectedError(`RSS poll failed for ${subscription.feedUrl}: ${message}`, error);
 
             return {
                 subscription: updatedSubscription,
@@ -166,11 +198,15 @@ export class RssProcessor implements IProcessor {
         feedTitle: string,
         items: Array<RssFeedItem>,
         read: IRead,
-        modify: IModify,
+        modify: IModify | undefined,
         dryRun: boolean,
     ): Promise<number> {
         if (!items.length || dryRun) {
             return 0;
+        }
+
+        if (!modify) {
+            throw new Error('Message creator accessor is unavailable in the scheduler context.');
         }
 
         const room = await read.getRoomReader().getById(subscription.roomId);
@@ -218,6 +254,42 @@ export class RssProcessor implements IProcessor {
 
         return lines.join('\n');
     }
+
+    private async saveSubscription(
+        store: RssSubscriptionStore,
+        subscription: RssSubscription,
+        errorPrefix = `Unable to persist RSS subscription ${subscription.id}`,
+    ): Promise<void> {
+        try {
+            await store.save(subscription);
+        } catch (error) {
+            this.logUnexpectedError(errorPrefix, error);
+        }
+    }
+
+    private logUnexpectedError(prefix: string, error: unknown): void {
+        if (error instanceof Error) {
+            const detail = error.stack ?? error.message;
+            this.app.getLogger().error(`${prefix}: ${detail}`);
+            return;
+        }
+
+        this.app.getLogger().error(`${prefix}: ${String(error)}`);
+    }
+
+    private logSchedulerAccessorState(accessors: {
+        modify: IModify | undefined;
+        http: IHttp | undefined;
+        persistence: IPersistence | undefined;
+    }): void {
+        if (accessors.modify && accessors.http && accessors.persistence) {
+            return;
+        }
+
+        this.app.getLogger().warn(
+            `RSS scheduler accessor availability: modify=${String(Boolean(accessors.modify))}, http=${String(Boolean(accessors.http))}, persistence=${String(Boolean(accessors.persistence))}`,
+        );
+    }
 }
 
 function addMinutes(value: Date, minutes: number): Date {
@@ -226,4 +298,54 @@ function addMinutes(value: Date, minutes: number): Date {
 
 function truncate(value: string, maxLength: number): string {
     return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
+}
+
+function resolveSchedulerAccessors(
+    modify: IModify,
+    http: IHttp,
+    persistence: IPersistence,
+): {
+    modify: IModify | undefined;
+    http: IHttp | undefined;
+    persistence: IPersistence | undefined;
+} {
+    if (hasModifyAccessor(modify) && hasHttpAccessor(http)) {
+        return {
+            modify,
+            http,
+            persistence: hasPersistenceAccessor(persistence) ? persistence : undefined,
+        };
+    }
+
+    if (hasHttpAccessor(modify as unknown) && hasPersistenceAccessor(http as unknown)) {
+        return {
+            modify: undefined,
+            http: modify as unknown as IHttp,
+            persistence: http as unknown as IPersistence,
+        };
+    }
+
+    return {
+        modify: hasModifyAccessor(modify) ? modify : undefined,
+        http: hasHttpAccessor(http) ? http : hasHttpAccessor(modify as unknown) ? modify as unknown as IHttp : undefined,
+        persistence: hasPersistenceAccessor(persistence)
+            ? persistence
+            : hasPersistenceAccessor(http as unknown)
+                ? http as unknown as IPersistence
+                : undefined,
+    };
+}
+
+function hasModifyAccessor(value: unknown): value is IModify {
+    return Boolean(value) && typeof (value as IModify).getCreator === 'function';
+}
+
+function hasHttpAccessor(value: unknown): value is IHttp {
+    return Boolean(value) && typeof (value as IHttp).get === 'function';
+}
+
+function hasPersistenceAccessor(value: unknown): value is IPersistence {
+    return Boolean(value)
+        && typeof (value as IPersistence).updateByAssociations === 'function'
+        && typeof (value as IPersistence).create === 'function';
 }
