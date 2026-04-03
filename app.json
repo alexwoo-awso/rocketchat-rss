@@ -1,0 +1,15 @@
+{
+    "id": "f605d7bf-fdac-4e57-b7b3-218376f7de58",
+    "version": "0.1.0",
+    "requiredApiVersion": "1.55.0",
+    "iconFile": "assets/rss-icon.png",
+    "author": {
+        "name": "alexwoo-awso",
+        "support": "https://github.com/alexwoo-awso/rocketchat-rss"
+    },
+    "name": "RocketChat RSS",
+    "nameSlug": "rocketchat-rss",
+    "classFile": "RssFeedApp.ts",
+    "description": "Universal and flexible RSS feed client for Rocket.Chat.",
+    "implements": []
+}
