@@ -13,6 +13,7 @@ import { ISetting } from '@rocket.chat/apps-engine/definition/settings';
 
 import { RssCommand } from './commands/RssCommand';
 import { settings } from './config/Settings';
+import { logRss } from './lib/RssLogger';
 import { RssProcessor } from './lib/RssProcessor';
 
 export class RssFeedApp extends App {
@@ -32,9 +33,9 @@ export class RssFeedApp extends App {
     public async onSettingUpdated(
         setting: ISetting,
         _configurationModify: IConfigurationModify,
-        _read: IRead,
+        read: IRead,
         _http: IHttp,
     ): Promise<void> {
-        this.getLogger().debug(`Setting updated: ${setting.id}`);
+        await logRss(this, read, 'debug', `Setting updated: ${setting.id}`);
     }
 }

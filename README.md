@@ -79,9 +79,11 @@ Universal and flexible RSS feed client for Rocket.Chat, built on the official Ap
 
 - `Default poll interval minutes`
 - `Default target channel`
+- `Default user pinning`
 - `Request timeout ms`
 - `User agent`
 - `Dry run mode`
+- `Logging level`
 
 `Dry run mode` is enabled by default. While it is enabled, feeds are fetched, parsed, deduplicated, and tracked, but scheduled or manual runs will not post messages into channels.
 

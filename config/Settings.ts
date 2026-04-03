@@ -3,15 +3,17 @@ import { ISetting, SettingType } from '@rocket.chat/apps-engine/definition/setti
 export enum RssSetting {
     DefaultPollIntervalMinutes = 'rss_default_poll_interval_minutes',
     DefaultTargetChannel = 'rss_default_target_channel',
+    DefaultUserPinning = 'rss_default_user_pinning',
     RequestTimeoutMs = 'rss_request_timeout_ms',
     UserAgent = 'rss_user_agent',
     DryRunMode = 'rss_dry_run_mode',
+    LogLevel = 'rss_log_level',
 }
 
 export const settings: Array<ISetting> = [
     {
         id: RssSetting.DefaultPollIntervalMinutes,
-        section: 'RSS General',
+        section: 'General',
         public: false,
         type: SettingType.NUMBER,
         value: 15,
@@ -23,7 +25,7 @@ export const settings: Array<ISetting> = [
     },
     {
         id: RssSetting.DefaultTargetChannel,
-        section: 'RSS General',
+        section: 'General',
         public: false,
         type: SettingType.STRING,
         value: '',
@@ -34,8 +36,20 @@ export const settings: Array<ISetting> = [
         required: false,
     },
     {
+        id: RssSetting.DefaultUserPinning,
+        section: 'General',
+        public: false,
+        type: SettingType.BOOLEAN,
+        value: false,
+        packageValue: false,
+        hidden: false,
+        i18nLabel: 'Default user pinning',
+        i18nDescription: 'When enabled, newly delivered RSS items are pinned in the target room by default.',
+        required: false,
+    },
+    {
         id: RssSetting.RequestTimeoutMs,
-        section: 'RSS HTTP',
+        section: 'HTTP',
         public: false,
         type: SettingType.NUMBER,
         value: 10000,
@@ -47,11 +61,11 @@ export const settings: Array<ISetting> = [
     },
     {
         id: RssSetting.UserAgent,
-        section: 'RSS HTTP',
+        section: 'HTTP',
         public: false,
         type: SettingType.STRING,
-        value: 'RocketChatRSS/0.2.1',
-        packageValue: 'RocketChatRSS/0.2.1',
+        value: 'RocketChatRSS/0.2.2',
+        packageValue: 'RocketChatRSS/0.2.2',
         hidden: false,
         i18nLabel: 'HTTP user agent',
         i18nDescription: 'User-Agent header sent when fetching RSS and Atom feeds.',
@@ -59,7 +73,7 @@ export const settings: Array<ISetting> = [
     },
     {
         id: RssSetting.DryRunMode,
-        section: 'RSS Safety',
+        section: 'Safety',
         public: false,
         type: SettingType.BOOLEAN,
         value: true,
@@ -68,5 +82,24 @@ export const settings: Array<ISetting> = [
         i18nLabel: 'Dry-run mode',
         i18nDescription: 'When enabled, feeds are fetched and tracked but new items are not posted into rooms.',
         required: false,
+    },
+    {
+        id: RssSetting.LogLevel,
+        section: 'Logging',
+        public: false,
+        type: SettingType.SELECT,
+        value: 'warn',
+        packageValue: 'warn',
+        values: [
+            { key: 'debug', i18nLabel: 'Debug' },
+            { key: 'info', i18nLabel: 'Info' },
+            { key: 'warn', i18nLabel: 'Warn' },
+            { key: 'error', i18nLabel: 'Error' },
+            { key: 'none', i18nLabel: 'None' },
+        ],
+        hidden: false,
+        i18nLabel: 'Logging level',
+        i18nDescription: 'Controls how much the app writes to the Rocket.Chat app logs.',
+        required: true,
     },
 ];

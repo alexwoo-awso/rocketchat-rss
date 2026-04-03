@@ -26,6 +26,9 @@ import {
     RssFeedReader,
 } from './RssFeedReader';
 import {
+    logRss,
+} from './RssLogger';
+import {
     RssSubscriptionStore,
 } from './RssSubscriptionStore';
 import {
@@ -60,7 +63,7 @@ export class RssProcessor implements IProcessor {
         persistence: IPersistence,
     ): Promise<void> => {
         const accessors = resolveSchedulerAccessors(modify, http, persistence);
-        this.logSchedulerAccessorState(accessors);
+        await this.logSchedulerAccessorState(read, accessors);
 
         try {
             const store = new RssSubscriptionStore(read, accessors.persistence);
@@ -80,14 +83,15 @@ export class RssProcessor implements IProcessor {
                         accessors.persistence,
                     );
                 } catch (error) {
-                    this.logUnexpectedError(
+                    await this.logUnexpectedError(
+                        read,
                         `Unexpected scheduler failure for subscription ${subscription.id} (${subscription.feedUrl})`,
                         error,
                     );
                 }
             }
         } catch (error) {
-            this.logUnexpectedError('RSS scheduler processor failed before subscription processing started', error);
+            await this.logUnexpectedError(read, 'RSS scheduler processor failed before subscription processing started', error);
         }
     };
 
@@ -122,9 +126,10 @@ export class RssProcessor implements IProcessor {
             const newItems = this.getNewItems(subscription, feed.items);
             const isBootstrap = !subscription.lastSuccessAt && !subscription.recentItemKeys.length;
             const dryRun = Boolean(await read.getEnvironmentReader().getSettings().getValueById(RssSetting.DryRunMode));
+            const pinItems = Boolean(await read.getEnvironmentReader().getSettings().getValueById(RssSetting.DefaultUserPinning));
             const deliveredCount = isBootstrap
                 ? 0
-                : await this.deliverItems(subscription, feed.title, newItems, read, modify, persistence, dryRun);
+                : await this.deliverItems(subscription, feed.title, newItems, read, modify, persistence, dryRun, pinItems);
 
             const updatedSubscription: RssSubscription = {
                 ...subscription,
@@ -140,7 +145,7 @@ export class RssProcessor implements IProcessor {
             await this.saveSubscription(store, {
                 ...updatedSubscription,
                 lastError: undefined,
-            });
+            }, read);
 
             return {
                 subscription: updatedSubscription,
@@ -160,8 +165,8 @@ export class RssProcessor implements IProcessor {
                 updatedAt: now.toISOString(),
             };
 
-            await this.saveSubscription(store, updatedSubscription, `Unable to persist failed RSS subscription ${subscription.id}`);
-            this.logUnexpectedError(`RSS poll failed for ${subscription.feedUrl}: ${message}`, error);
+            await this.saveSubscription(store, updatedSubscription, read, `Unable to persist failed RSS subscription ${subscription.id}`);
+            await this.logUnexpectedError(read, `RSS poll failed for ${subscription.feedUrl}: ${message}`, error);
 
             return {
                 subscription: updatedSubscription,
@@ -208,6 +213,7 @@ export class RssProcessor implements IProcessor {
         modify: IModify | undefined,
         persistence: IPersistence | undefined,
         dryRun: boolean,
+        pinItems: boolean,
     ): Promise<number> {
         if (!items.length || dryRun) {
             return 0;
@@ -251,6 +257,19 @@ export class RssProcessor implements IProcessor {
                     text: item.summary ? truncate(item.summary, 350) : undefined,
                     author: item.author ? { name: item.author } : undefined,
                     timestamp: item.publishedAt ? new Date(item.publishedAt) : undefined,
+                });
+            }
+
+            if (pinItems) {
+                builder.setData({
+                    ...builder.getMessage(),
+                    pinned: true,
+                    pinnedAt: new Date(),
+                    pinnedBy: {
+                        _id: sender.id,
+                        username: sender.username,
+                        name: sender.name,
+                    },
                 });
             }
 
@@ -304,7 +323,7 @@ export class RssProcessor implements IProcessor {
             try {
                 return await read.getUserReader().getByUsername(identityConfig.senderUsername);
             } catch (error) {
-                this.logUnexpectedError(`Unable to load configured sender @${identityConfig.senderUsername}`, error);
+                await this.logUnexpectedError(read, `Unable to load configured sender @${identityConfig.senderUsername}`, error);
             }
         }
 
@@ -314,35 +333,39 @@ export class RssProcessor implements IProcessor {
     private async saveSubscription(
         store: RssSubscriptionStore,
         subscription: RssSubscription,
+        read: IRead,
         errorPrefix = `Unable to persist RSS subscription ${subscription.id}`,
     ): Promise<void> {
         try {
             await store.save(subscription);
         } catch (error) {
-            this.logUnexpectedError(errorPrefix, error);
+            await this.logUnexpectedError(read, errorPrefix, error);
         }
     }
 
-    private logUnexpectedError(prefix: string, error: unknown): void {
+    private async logUnexpectedError(read: IRead, prefix: string, error: unknown): Promise<void> {
         if (error instanceof Error) {
             const detail = error.stack ?? error.message;
-            this.app.getLogger().error(`${prefix}: ${detail}`);
+            await logRss(this.app, read, 'error', `${prefix}: ${detail}`);
             return;
         }
 
-        this.app.getLogger().error(`${prefix}: ${String(error)}`);
+        await logRss(this.app, read, 'error', `${prefix}: ${String(error)}`);
     }
 
-    private logSchedulerAccessorState(accessors: {
+    private async logSchedulerAccessorState(read: IRead, accessors: {
         modify: IModify | undefined;
         http: IHttp | undefined;
         persistence: IPersistence | undefined;
-    }): void {
+    }): Promise<void> {
         if (accessors.modify && accessors.http && accessors.persistence) {
             return;
         }
 
-        this.app.getLogger().warn(
+        await logRss(
+            this.app,
+            read,
+            'warn',
             `RSS scheduler accessor availability: modify=${String(Boolean(accessors.modify))}, http=${String(Boolean(accessors.http))}, persistence=${String(Boolean(accessors.persistence))}`,
         );
     }

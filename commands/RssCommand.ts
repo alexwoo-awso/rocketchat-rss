@@ -11,6 +11,7 @@ import {
 
 import { RssFeedApp } from '../RssFeedApp';
 import { RssFeedService } from '../lib/RssFeedService';
+import { logRss } from '../lib/RssLogger';
 
 export class RssCommand implements ISlashCommand {
     public command = 'rss';
@@ -27,7 +28,7 @@ export class RssCommand implements ISlashCommand {
             await this.sendMessage(context, modify, response);
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unexpected RSS command error.';
-            this.app.getLogger().error(`RSS command failed: ${message}`);
+            await logRss(this.app, read, 'error', `RSS command failed: ${message}`);
             await this.sendMessage(context, modify, `RSS command failed: ${message}`);
         }
     }
