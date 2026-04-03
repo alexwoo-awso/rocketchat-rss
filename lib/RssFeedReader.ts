@@ -19,7 +19,7 @@ export class RssFeedReader {
     public async readFeed(feedUrl: string, read: IRead, http: IHttp): Promise<ParsedRssFeed> {
         const settings = read.getEnvironmentReader().getSettings();
         const timeout = Number(await settings.getValueById(RssSetting.RequestTimeoutMs)) || 10000;
-        const userAgent = String(await settings.getValueById(RssSetting.UserAgent) || 'RocketChatRSS/0.2.0');
+        const userAgent = String(await settings.getValueById(RssSetting.UserAgent) || 'RocketChatRSS/0.2.1');
         const response = await http.get(feedUrl, {
             headers: {
                 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1',
